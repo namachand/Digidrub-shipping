@@ -29,8 +29,10 @@ export function loadPoblados() {
   poblados = JSON.parse(raw);
   byDepartment = new Map();
   for (const p of poblados) {
-    if (!byDepartment.has(p.CodigoDepto)) byDepartment.set(p.CodigoDepto, []);
-    byDepartment.get(p.CodigoDepto).push(p);
+    // Normalize CodigoDepto to a 2-digit string so lookups match CAEX's dept codes ("01", "02", ..., "22")
+    const deptKey = String(p.CodigoDepto).padStart(2, '0');
+    if (!byDepartment.has(deptKey)) byDepartment.set(deptKey, []);
+    byDepartment.get(deptKey).push(p);
   }
   log.info(`Loaded ${poblados.length} poblados across ${byDepartment.size} departments`);
 }

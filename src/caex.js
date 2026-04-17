@@ -35,7 +35,7 @@ async function soapCall(operation, bodyXml) {
         'Content-Type': 'text/xml; charset=utf-8',
         'SOAPAction': soapAction,
       },
-      timeout: 8000, // leave some budget under Shopify's 10s
+      timeout: Number(process.env.CAEX_TIMEOUT_MS) || 8000,
     });
 
     const parsed = parser.parse(data);

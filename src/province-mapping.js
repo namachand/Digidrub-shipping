@@ -13,61 +13,77 @@
 
 // Shopify ISO code (2-letter) → CAEX department code
 export const ISO_TO_CAEX = {
-    AVA: '01', // Alta Verapaz
-    BVA: '02', // Baja Verapaz
-    CHI: '03', // Chimaltenango
-    CHQ: '04', // Chiquimula
-    PRO: '05', // El Progreso
-    ESC: '06', // Escuintla
-    GUA: '07', // Guatemala
-    HUE: '08', // Huehuetenango
-    IZA: '09', // Izabal
-    JAL: '10', // Jalapa
-    JUT: '11', // Jutiapa
-    PET: '12', // Petén
-    QUE: '13', // Quetzaltenango
-    QCH: '14', // Quiché
-    RET: '15', // Retalhuleu
-    SAC: '16', // Sacatepéquez
-    SMA: '17', // San Marcos
-    SRO: '18', // Santa Rosa
-    SOL: '19', // Sololá
-   SUCH: '20', // Suchitepéquez
-    TOT: '21', // Totonicapán
-    ZAC: '22', // Zacapa
+  AV: '01', // Alta Verapaz
+  BV: '02', // Baja Verapaz
+  CM: '03', // Chimaltenango
+  CQ: '04', // Chiquimula
+  PR: '05', // El Progreso
+  ES: '06', // Escuintla
+  GU: '07', // Guatemala
+  HU: '08', // Huehuetenango
+  IZ: '09', // Izabal
+  JA: '10', // Jalapa
+  JU: '11', // Jutiapa
+  PE: '12', // Petén
+  QZ: '13', // Quetzaltenango
+  QC: '14', // Quiché
+  RE: '15', // Retalhuleu
+  SA: '16', // Sacatepéquez
+  SM: '17', // San Marcos
+  SR: '18', // Santa Rosa
+  SO: '19', // Sololá
+  SU: '20', // Suchitepéquez
+  TO: '21', // Totonicapán
+  ZA: '22', // Zacapa
 };
 
 // Department name (normalized) → CAEX department code
+// Covers full names, 3-letter abbreviations, and variants Shopify may send
 export const NAME_TO_CAEX = {
-  'alta verapaz': '01',
-  'baja verapaz': '02',
-  chimaltenango: '03',
-  chiquimula: '04',
-  'el progreso': '05',
-  progreso: '05',
-  escuintla: '06',
-  guatemala: '07',
-  huehuetenango: '08',
-  izabal: '09',
-  jalapa: '10',
-  jutiapa: '11',
-  peten: '12',
-  petén: '12',
-  quetzaltenango: '13',
-  quiche: '14',
-  quiché: '14',
-  retalhuleu: '15',
-  sacatepequez: '16',
-  sacatepéquez: '16',
-  'san marcos': '17',
-  'santa rosa': '18',
-  solola: '19',
-  sololá: '19',
-  suchitepequez: '20',
-  suchitepéquez: '20',
-  totonicapan: '21',
-  totonicapán: '21',
-  zacapa: '22',
+  // Alta Verapaz
+  'alta verapaz': '01', ave: '01', 'alta v': '01',
+  // Baja Verapaz
+  'baja verapaz': '02', bve: '02', bav: '02', 'baja v': '02',
+  // Chimaltenango
+  chimaltenango: '03', chi: '03', chm: '03',
+  // Chiquimula
+  chiquimula: '04', chq: '04',
+  // El Progreso
+  'el progreso': '05', progreso: '05', pro: '05', epr: '05',
+  // Escuintla
+  escuintla: '06', esc: '06',
+  // Guatemala
+  guatemala: '07', gua: '07', gt: '07',
+  // Huehuetenango
+  huehuetenango: '08', hue: '08',
+  // Izabal
+  izabal: '09', iza: '09',
+  // Jalapa
+  jalapa: '10', jal: '10',
+  // Jutiapa
+  jutiapa: '11', jut: '11',
+  // Petén
+  peten: '12', petén: '12', pet: '12',
+  // Quetzaltenango
+  quetzaltenango: '13', que: '13', qtz: '13', qzt: '13',
+  // Quiché
+  quiche: '14', quiché: '14', qui: '14', quc: '14',
+  // Retalhuleu
+  retalhuleu: '15', ret: '15',
+  // Sacatepéquez
+  sacatepequez: '16', sacatepéquez: '16', sac: '16',
+  // San Marcos
+  'san marcos': '17', sma: '17', smr: '17',
+  // Santa Rosa
+  'santa rosa': '18', sro: '18', sra: '18',
+  // Sololá
+  solola: '19', sololá: '19', sol: '19',
+  // Suchitepéquez
+  suchitepequez: '20', suchitepéquez: '20', suc: '20',
+  // Totonicapán
+  totonicapan: '21', totonicapán: '21', tot: '21',
+  // Zacapa
+  zacapa: '22', zac: '22',
 };
 
 /**
