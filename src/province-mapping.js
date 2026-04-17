@@ -13,28 +13,28 @@
 
 // Shopify ISO code (2-letter) → CAEX department code
 export const ISO_TO_CAEX = {
-  AV: '01', // Alta Verapaz
-  BV: '02', // Baja Verapaz
-  CM: '03', // Chimaltenango
-  CQ: '04', // Chiquimula
-  PR: '05', // El Progreso
-  ES: '06', // Escuintla
-  GU: '07', // Guatemala
-  HU: '08', // Huehuetenango
-  IZ: '09', // Izabal
-  JA: '10', // Jalapa
-  JU: '11', // Jutiapa
-  PE: '12', // Petén
-  QZ: '13', // Quetzaltenango
-  QC: '14', // Quiché
-  RE: '15', // Retalhuleu
-  SA: '16', // Sacatepéquez
-  SM: '17', // San Marcos
-  SR: '18', // Santa Rosa
-  SO: '19', // Sololá
-  SU: '20', // Suchitepéquez
-  TO: '21', // Totonicapán
-  ZA: '22', // Zacapa
+    AVA: '01', // Alta Verapaz
+    BVA: '02', // Baja Verapaz
+    CHI: '03', // Chimaltenango
+    CHQ: '04', // Chiquimula
+    PRO: '05', // El Progreso
+    ESC: '06', // Escuintla
+    GUA: '07', // Guatemala
+    HUE: '08', // Huehuetenango
+    IZA: '09', // Izabal
+    JAL: '10', // Jalapa
+    JUT: '11', // Jutiapa
+    PET: '12', // Petén
+    QUE: '13', // Quetzaltenango
+    QCH: '14', // Quiché
+    RET: '15', // Retalhuleu
+    SAC: '16', // Sacatepéquez
+    SMA: '17', // San Marcos
+    SRO: '18', // Santa Rosa
+    SOL: '19', // Sololá
+   SUCH: '20', // Suchitepéquez
+    TOT: '21', // Totonicapán
+    ZAC: '22', // Zacapa
 };
 
 // Department name (normalized) → CAEX department code
