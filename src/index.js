@@ -1,42 +1,51 @@
-/**
- * Entry point. Loads env, mounts routes, starts the server.
- */
 import 'dotenv/config';
 import express from 'express';
 import { handleRatesRequest } from './rates-handler.js';
+import { handleOrderPaid } from './order-paid-handler.js';
 import { loadPoblados } from './poblado-lookup.js';
 import { log } from './logger.js';
 
 const app = express();
-app.use(express.json({ limit: '1mb' }));
 
-// Health check — Render + uptime monitors use this
+// Raw body only for Shopify webhooks
+app.use('/shopify/order-paid', express.raw({ type: '*/*', limit: '1mb' }));
+
+// JSON parser for everything else
+app.use((req, res, next) => {
+  if (req.path === '/shopify/order-paid') {
+    req.rawBody = req.body?.toString('utf8') || '';
+    try {
+      req.body = JSON.parse(req.rawBody || '{}');
+    } catch {
+      req.body = {};
+    }
+    return next();
+  }
+
+  return express.json({ limit: '1mb' })(req, res, next);
+});
+
 app.get('/health', (_req, res) => {
   res.json({ status: 'ok', time: new Date().toISOString() });
 });
 
-// Shopify Carrier Service API callback
 app.post('/shopify/rates', handleRatesRequest);
-
-// Local testing endpoint — hit with a fake Shopify payload without Shopify involved
 app.post('/test/rates', handleRatesRequest);
+app.post('/shopify/order-paid', handleOrderPaid);
 
-// Root
 app.get('/', (_req, res) => {
   res.json({
     service: 'CAEX Shopify Middleware',
-    endpoints: ['/health', '/shopify/rates', '/test/rates'],
+    endpoints: ['/health', '/shopify/rates', '/test/rates', '/shopify/order-paid'],
   });
 });
 
-// 404
 app.use((req, res) => {
   res.status(404).json({ error: 'Not found', path: req.path });
 });
 
 const port = Number(process.env.PORT) || 3000;
 
-// Load poblados before accepting requests
 loadPoblados();
 
 app.listen(port, () => {

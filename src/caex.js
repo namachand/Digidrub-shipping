@@ -128,3 +128,74 @@ export async function getPoblados(codigoDepartamento) {
   const list = response?.ResultadoObtenerPoblados?.ListadoPoblados?.Poblado;
   return Array.isArray(list) ? list : list ? [list] : [];
 }
+
+export async function generateGuide({
+  codigoDespacho,
+  customerName,
+  phone,
+  email,
+  address1,
+  address2,
+  city,
+  province,
+  deptCode,
+  destPobladoCode,
+  reference,
+  amount,
+}) {
+  // IMPORTANT:
+  // Replace this XML with the real CAEX GenerarGuia template.
+  const body = `<GenerarGuia xmlns="${CAEX_NS}">
+      ${authXml()}
+      <DatosGuia>
+        <CodigoCredito>${process.env.CAEX_CREDITO}</CodigoCredito>
+        <CodigoDespacho>${codigoDespacho}</CodigoDespacho>
+        <CodigoPobladoOrigen>${process.env.CAEX_ORIGEN_POBLADO}</CodigoPobladoOrigen>
+        <CodigoPobladoDestino>${destPobladoCode}</CodigoPobladoDestino>
+        <NombreDestinatario>${escapeXml(customerName)}</NombreDestinatario>
+        <TelefonoDestinatario>${escapeXml(phone)}</TelefonoDestinatario>
+        <EmailDestinatario>${escapeXml(email)}</EmailDestinatario>
+        <Direccion1>${escapeXml(address1)}</Direccion1>
+        <Direccion2>${escapeXml(address2 || '')}</Direccion2>
+        <Ciudad>${escapeXml(city)}</Ciudad>
+        <Departamento>${escapeXml(province)}</Departamento>
+        <Referencia>${escapeXml(reference)}</Referencia>
+        <Valor>${escapeXml(String(amount || '0'))}</Valor>
+      </DatosGuia>
+    </GenerarGuia>`;
+
+  const response = await soapCall('GenerarGuia', body);
+
+  // IMPORTANT:
+  // Adjust these paths after you get the real CAEX response example.
+  const result = response?.ResultadoGenerarGuia || response;
+  const opResult = result?.ResultadoOperacion;
+
+  if (opResult?.ResultadoExitoso === true || opResult?.ResultadoExitoso === 'true') {
+    return {
+      success: true,
+      trackingNumber:
+        result?.NumeroGuia ||
+        result?.Guia ||
+        result?.TrackingNumber,
+      trackingUrl:
+        result?.UrlRastreo || null,
+      raw: result,
+    };
+  }
+
+  return {
+    success: false,
+    error: opResult?.MensajeError || 'Unknown CAEX GenerarGuia error',
+    raw: result,
+  };
+}
+
+function escapeXml(value) {
+  return String(value || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;');
+}
