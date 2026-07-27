@@ -1,15 +1,16 @@
 import { resolveDepartamento } from './province-mapping.js';
 import { findPobladoCode } from './poblado-lookup.js';
 import { getRate } from './caex.js';
+import { getVariantMetafields } from './shopify-client.js';
 import { log } from './logger.js';
 
 const GUATEMALA_DEPT_CODE = '07';
 const FREE_SHIPPING_THRESHOLD_GTQ = Number(process.env.FREE_SHIPPING_THRESHOLD_GTQ || 250);
 
-// Used ONLY when a real weight genuinely cannot be determined (missing on
-// the product AND CAEX itself is unreachable). This is a last-resort
-// fallback, not the primary path — the primary path is always the real
-// CAEX rate. Flagged loudly whenever it fires so it's visible, not silent.
+// Last-resort value when an item is missing BOTH real weight AND a
+// costo_de_envio metafield. Used once per such line item (not multiplied
+// by quantity) — deliberately NOT the same per-unit-multiplied pattern as
+// the original bug.
 const FALLBACK_COSTO_ENVIO_GTQ = Number(process.env.FALLBACK_COSTO_ENVIO_GTQ || 612);
 
 export const SERVICE_CODES = {
@@ -44,106 +45,133 @@ function getSubtotalGtq(items = []) {
 }
 
 /**
- * Total weight of the cart, in kg, using each item's real grams/weight
- * field passed by Shopify's rate request. Returns { totalWeightKg,
- * missingWeightItems } so callers know if any item had no usable weight.
- *
- * IMPORTANT: this trusts whatever weight Shopify's rate payload sends for
- * each item (Shopify includes `grams` on cart line items in the carrier
- * service request). If a product's weight is 0 in Shopify (as we found is
- * true for most of the catalog today), that shows up here as missing —
- * which is the correct, honest behavior. The real fix for those items is
- * populating real weight data at the source, not guessing here.
+ * Split cart items into those with real Shopify weight data and those
+ * without. Only items in the "unknown" bucket ever trigger a metafield
+ * lookup — items with real weight never pay that latency cost.
  */
-function getCartWeightKg(items = []) {
-  let totalWeightKg = 0;
-  const missingWeightItems = [];
-
+function splitByWeightKnowledge(items = []) {
+  const known = [];
+  const unknown = [];
   for (const item of items) {
     const grams = Number(item.grams || 0);
-    const quantity = Number(item.quantity || 1);
-
-    if (!grams || grams <= 0) {
-      missingWeightItems.push({
-        name: item.name,
-        variant_id: item.variant_id,
-        quantity,
-      });
-      continue;
+    if (grams > 0) {
+      known.push(item);
+    } else {
+      unknown.push(item);
     }
-
-    totalWeightKg += (grams / 1000) * quantity;
   }
+  return { known, unknown };
+}
 
-  return { totalWeightKg, missingWeightItems };
+function totalWeightKgOf(items) {
+  return items.reduce((sum, item) => {
+    const grams = Number(item.grams || 0);
+    const quantity = Number(item.quantity || 1);
+    return sum + (grams / 1000) * quantity;
+  }, 0);
 }
 
 /**
- * Call CAEX's real rate API for the resolved destination + cart weight.
- * Returns { success, priceGtq, usedFallback, missingWeightItems }.
+ * For items missing real weight, look up their costo_de_envio metafield
+ * (in parallel) as a smarter per-product estimate. Falls back to the flat
+ * FALLBACK_COSTO_ENVIO_GTQ (once per line item, not multiplied by qty) for
+ * any item that also has no metafield value.
+ *
+ * ASSUMPTION: costo_de_envio represents a per-UNIT cost, so it's
+ * multiplied by that item's quantity. If your team intends it as a flat
+ * per-line-item cost regardless of quantity, remove the `* quantity` below.
  */
-async function getRealShippingCost({ destPobladoCode, items }) {
-  const { totalWeightKg, missingWeightItems } = getCartWeightKg(items);
+async function estimateCostForUnknownWeightItems(items) {
+  const results = await Promise.all(
+    items.map(async (item) => {
+      const quantity = Number(item.quantity || 1);
+      try {
+        const metafields = await getVariantMetafields(item.variant_id);
+        const mf = metafields.find(
+          (m) => m.namespace === 'custom' && m.key === 'costo_de_envio'
+        );
+        const value = mf ? Number(mf.value) : NaN;
 
-  if (missingWeightItems.length > 0) {
-    log.warn('Cart has items with no weight data — CAEX quote will be based on partial weight', {
-      missingWeightItems,
-      knownWeightKg: totalWeightKg,
-    });
-  }
+        if (Number.isFinite(value)) {
+          return { name: item.name, variant_id: item.variant_id, source: 'metafield', costGtq: value * quantity };
+        }
+      } catch (err) {
+        log.warn('Metafield lookup failed for item missing weight — using flat fallback', {
+          variant_id: item.variant_id,
+          err: err.message,
+        });
+      }
 
-  // If we have ZERO usable weight (e.g. every item is missing weight),
-  // there's nothing meaningful to send CAEX — go straight to fallback
-  // rather than asking CAEX to quote a 0kg shipment.
-  if (totalWeightKg <= 0) {
-    log.error('No usable weight for any cart item — using flat fallback rate', {
-      missingWeightItems,
-    });
-    return {
-      success: false,
-      priceGtq: FALLBACK_COSTO_ENVIO_GTQ,
-      usedFallback: true,
-      missingWeightItems,
-    };
-  }
+      return { name: item.name, variant_id: item.variant_id, source: 'flat_default', costGtq: FALLBACK_COSTO_ENVIO_GTQ };
+    })
+  );
 
-  try {
-    const result = await getRate({
-      origen: process.env.CAEX_ORIGEN_POBLADO,
-      destino: destPobladoCode,
-      pieza: process.env.CAEX_DEFAULT_PIEZA || '1',
-      servicio: process.env.CAEX_DEFAULT_SERVICIO,
-      peso: totalWeightKg,
-    });
+  const totalCostGtq = results.reduce((sum, r) => sum + r.costGtq, 0);
+  return { totalCostGtq, itemBreakdown: results };
+}
 
-    if (result.success) {
-      return {
-        success: true,
-        priceGtq: result.price,
-        usedFallback: false,
-        missingWeightItems,
-      };
+/**
+ * Determine shipping cost for the cart:
+ *  - If every item has real weight -> real CAEX quote (or flat fallback if
+ *    CAEX itself fails).
+ *  - If any item is missing weight -> per-item estimate (metafield when
+ *    available, flat default otherwise) for ALL items, since a partial
+ *    CAEX quote based on incomplete weight would be misleading rather
+ *    than helpful.
+ * Always returns { priceGtq, usedFallback, detail } — usedFallback is
+ * true whenever the number is NOT a live CAEX quote, regardless of which
+ * fallback tier produced it.
+ */
+async function getShippingCost({ destPobladoCode, items }) {
+  const { known, unknown } = splitByWeightKnowledge(items);
+
+  if (unknown.length === 0) {
+    const totalWeightKg = totalWeightKgOf(known);
+
+    try {
+      const result = await getRate({
+        origen: process.env.CAEX_ORIGEN_POBLADO,
+        destino: destPobladoCode,
+        pieza: process.env.CAEX_DEFAULT_PIEZA || '1',
+        servicio: process.env.CAEX_DEFAULT_SERVICIO,
+        peso: totalWeightKg,
+      });
+
+      if (result.success) {
+        return { priceGtq: result.price, usedFallback: false, detail: 'caex_quote' };
+      }
+
+      log.error('CAEX getRate returned failure — using flat fallback rate', {
+        error: result.error,
+        code: result.code,
+      });
+      return { priceGtq: FALLBACK_COSTO_ENVIO_GTQ, usedFallback: true, detail: 'caex_failed' };
+    } catch (err) {
+      log.error('CAEX getRate threw — using flat fallback rate', { err: err.message });
+      return { priceGtq: FALLBACK_COSTO_ENVIO_GTQ, usedFallback: true, detail: 'caex_error' };
     }
-
-    log.error('CAEX getRate returned failure — using flat fallback rate', {
-      error: result.error,
-      code: result.code,
-    });
-    return {
-      success: false,
-      priceGtq: FALLBACK_COSTO_ENVIO_GTQ,
-      usedFallback: true,
-      missingWeightItems,
-    };
-  } catch (err) {
-    log.error('CAEX getRate threw — using flat fallback rate', { err: err.message });
-    return {
-      success: false,
-      priceGtq: FALLBACK_COSTO_ENVIO_GTQ,
-      usedFallback: true,
-      missingWeightItems,
-    };
   }
+
+  // At least one item is missing weight — can't get a trustworthy single
+  // CAEX quote for the whole cart, so estimate per item instead.
+  log.warn('Cart has items with no weight data — using per-item estimate instead of a CAEX quote', {
+    missingWeightItems: unknown.map((i) => ({ name: i.name, variant_id: i.variant_id })),
+  });
+
+  const { totalCostGtq, itemBreakdown } = await estimateCostForUnknownWeightItems(unknown);
+
+  // Items that DO have weight still contribute nothing extra here, since
+  // we have no reliable way to combine a partial CAEX quote with per-item
+  // metafield estimates into one honest number. Logged for visibility.
+  if (known.length > 0) {
+    log.info('Cart also has items with real weight, but a mixed-source quote was not attempted', {
+      knownWeightItems: known.map((i) => ({ name: i.name, variant_id: i.variant_id })),
+    });
+  }
+
+  log.info('Per-item shipping estimate breakdown', { itemBreakdown, totalCostGtq });
+
+  return { priceGtq: totalCostGtq, usedFallback: true, detail: 'per_item_estimate' };
 }
 
 export async function buildLocalRates(payload) {
@@ -161,17 +189,14 @@ export async function buildLocalRates(payload) {
   const subtotalGtq = getSubtotalGtq(items);
   const isGuatemalaDept = deptCode === GUATEMALA_DEPT_CODE;
 
-  // Always calculate the REAL cost, even if the customer ends up seeing
-  // "free" — this keeps internal records accurate and makes it possible to
-  // track what free shipping is actually costing the business.
-  const costResult = await getRealShippingCost({ destPobladoCode, items });
+  const costResult = await getShippingCost({ destPobladoCode, items });
 
   if (costResult.usedFallback) {
-    log.warn('Rate quote used fallback pricing instead of a real CAEX quote', {
+    log.warn('Rate quote used fallback pricing instead of a live CAEX quote', {
       destination,
       subtotalGtq,
+      detail: costResult.detail,
       fallbackPriceGtq: costResult.priceGtq,
-      missingWeightItems: costResult.missingWeightItems,
     });
   }
 
