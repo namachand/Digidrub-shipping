@@ -18,7 +18,6 @@ export async function handleRatesRequest(req, res) {
       currency: payload?.currency,
       itemCount: payload?.items?.length || 0,
     });
-
     log.info('Incoming Shopify rate items', payload?.items || []);
 
     const rates = await buildLocalRates(payload);
@@ -31,7 +30,6 @@ export async function handleRatesRequest(req, res) {
     return res.json({ rates });
   } catch (err) {
     log.error('Unexpected error in rates handler', err.stack || err.message);
-
     return res.json({
       rates: [
         {
