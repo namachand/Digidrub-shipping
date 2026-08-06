@@ -1,7 +1,7 @@
 import { resolveDepartamento } from './province-mapping.js';
 import { findPobladoCode } from './poblado-lookup.js';
 import { getRate } from './caex.js';
-import { getVariantMetafields } from './shopify-client.js';
+import { getProductMetafields } from './shopify-client.js';
 import { log } from './logger.js';
 
 const GUATEMALA_DEPT_CODE = '07';
@@ -44,7 +44,10 @@ function getSubtotalGtq(items = []) {
 
 /**
  * Look up each line item's costo_de_envio metafield (in parallel, via the
- * cached getVariantMetafields) and multiply it by that item's quantity.
+ * cached getProductMetafields) and multiply it by that item's quantity.
+ * costo_de_envio lives on the PRODUCT in Shopify admin, so this looks up
+ * by product_id — NOT variant_id, which is a separate metafield resource
+ * and would never find this value.
  * Sums across ALL items in the cart, so two different products each add
  * their own shipping cost instead of only one price being shown.
  *
@@ -56,23 +59,23 @@ async function estimateShippingCostForItems(items) {
     items.map(async (item) => {
       const quantity = Number(item.quantity || 1);
       try {
-        const metafields = await getVariantMetafields(item.variant_id);
+        const metafields = await getProductMetafields(item.product_id);
         const mf = metafields.find(
           (m) => m.namespace === 'custom' && m.key === 'costo_de_envio'
         );
         const value = mf ? Number(mf.value) : NaN;
 
         if (Number.isFinite(value)) {
-          return { name: item.name, variant_id: item.variant_id, source: 'metafield', costGtq: value * quantity };
+          return { name: item.name, product_id: item.product_id, source: 'metafield', costGtq: value * quantity };
         }
       } catch (err) {
         log.warn('Metafield lookup failed for item — using flat fallback', {
-          variant_id: item.variant_id,
+          product_id: item.product_id,
           err: err.message,
         });
       }
 
-      return { name: item.name, variant_id: item.variant_id, source: 'flat_default', costGtq: FALLBACK_COSTO_ENVIO_GTQ };
+      return { name: item.name, product_id: item.product_id, source: 'flat_default', costGtq: FALLBACK_COSTO_ENVIO_GTQ };
     })
   );
 
