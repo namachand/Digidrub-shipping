@@ -1,5 +1,11 @@
 import axios from 'axios';
 import { log } from './logger.js';
+import { cacheGet, cacheSet } from './cache.js';
+
+// How long a variant's metafields stay cached before we re-fetch from
+// Shopify. costo_de_envio changes rarely, so this trades a bit of
+// staleness for a checkout that doesn't wait on the Admin API.
+const METAFIELD_CACHE_TTL_SECONDS = Number(process.env.METAFIELD_CACHE_TTL_SECONDS || 3600);
 
 const SHOP = process.env.SHOPIFY_SHOP;
 const CLIENT_ID = process.env.SHOPIFY_CLIENT_ID;
@@ -96,9 +102,15 @@ async function shopifyGet(path, retryOnAuthError = true) {
 }
 
 export async function getVariantMetafields(variantId) {
+  const cacheKey = `variant_metafields:${variantId}`;
+  const cached = cacheGet(cacheKey);
+  if (cached) return cached;
+
   try {
     const data = await shopifyGet(`/variants/${variantId}/metafields.json`);
-    return data?.metafields || [];
+    const metafields = data?.metafields || [];
+    cacheSet(cacheKey, metafields, METAFIELD_CACHE_TTL_SECONDS);
+    return metafields;
   } catch (err) {
     log.error('Failed to fetch variant metafields', {
       variantId,
@@ -106,4 +118,13 @@ export async function getVariantMetafields(variantId) {
     });
     return [];
   }
+}
+
+/**
+ * Call this from an admin/products webhook handler (e.g. products/update)
+ * to invalidate a variant's cached metafields the moment costo_de_envio
+ * changes, instead of waiting out the TTL.
+ */
+export function invalidateVariantMetafieldsCache(variantId) {
+  cacheSet(`variant_metafields:${variantId}`, null, 0);
 }
