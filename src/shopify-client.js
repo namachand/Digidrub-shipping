@@ -2,7 +2,7 @@ import axios from 'axios';
 import { log } from './logger.js';
 import { cacheGet, cacheSet } from './cache.js';
 
-// How long a variant's metafields stay cached before we re-fetch from
+// How long a product's metafields stay cached before we re-fetch from
 // Shopify. costo_de_envio changes rarely, so this trades a bit of
 // staleness for a checkout that doesn't wait on the Admin API.
 const METAFIELD_CACHE_TTL_SECONDS = Number(process.env.METAFIELD_CACHE_TTL_SECONDS || 3600);
@@ -121,10 +121,39 @@ export async function getVariantMetafields(variantId) {
 }
 
 /**
+ * costo_de_envio is set on the PRODUCT in Shopify admin (Product metafields
+ * section), not on the variant — these are two separate resources in
+ * Shopify's API, each with their own metafields.json endpoint. This is the
+ * one shipping-rules.js should call for costo_de_envio.
+ */
+export async function getProductMetafields(productId) {
+  const cacheKey = `product_metafields:${productId}`;
+  const cached = cacheGet(cacheKey);
+  if (cached) return cached;
+
+  try {
+    const data = await shopifyGet(`/products/${productId}/metafields.json`);
+    const metafields = data?.metafields || [];
+    cacheSet(cacheKey, metafields, METAFIELD_CACHE_TTL_SECONDS);
+    return metafields;
+  } catch (err) {
+    log.error('Failed to fetch product metafields', {
+      productId,
+      message: err.message,
+    });
+    return [];
+  }
+}
+
+/**
  * Call this from an admin/products webhook handler (e.g. products/update)
  * to invalidate a variant's cached metafields the moment costo_de_envio
  * changes, instead of waiting out the TTL.
  */
 export function invalidateVariantMetafieldsCache(variantId) {
   cacheSet(`variant_metafields:${variantId}`, null, 0);
+}
+
+export function invalidateProductMetafieldsCache(productId) {
+  cacheSet(`product_metafields:${productId}`, null, 0);
 }
